@@ -9,6 +9,11 @@
         android:layout_height="match_parent"
         android:orientation="vertical"
         android:padding="8dp">
+        <ProgressBar
+            android:layout_gravity="center"
+            android:id="@+id/progress_bar"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"/>
         <TextView
             android:id="@+id/network_title"
             android:layout_width="match_parent"
@@ -60,6 +65,7 @@
             android:background="@drawable/gray_round_bg"/>
 
         <Button
+            android:id="@+id/btn_refresh_balance"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:onClick="updateAddressBalance"
@@ -97,6 +103,7 @@
             android:padding="5dp"
             android:background="@drawable/gray_round_bg"/>
         <Button
+            android:id="@+id/btn_refresh_to_balance"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:onClick="updateToAddressBalance"
@@ -120,6 +127,7 @@
             android:background="@drawable/gray_round_bg"/>
 
         <Button
+            android:id="@+id/btn_send"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:onClick="onSendEth"
@@ -150,6 +158,7 @@
                 android:padding="5dp"
                 android:background="@drawable/gray_round_bg"/>
             <Button
+                android:id="@+id/showKeyStore"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:onClick="showKeyStore"
@@ -169,6 +178,7 @@
                 android:padding="5dp"
                 android:background="@drawable/gray_round_bg"/>
             <Button
+                android:id="@+id/showPrivateKey"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:onClick="showPrivateKey"

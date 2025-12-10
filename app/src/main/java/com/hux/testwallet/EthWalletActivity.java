@@ -1,293 +1,119 @@
 package com.hux.testwallet;
 
-import android.os.AsyncTask;
 import android.os.Bundle;
 import android.text.TextUtils;
-import android.util.Log;
 import android.view.Menu;
 import android.view.MenuItem;
 import android.view.View;
-import android.widget.EditText;
+import android.widget.Button;
+import android.widget.EditText;import android.widget.ProgressBar;
 import android.widget.TextView;
 import android.widget.Toast;
 
 import androidx.annotation.Nullable;
 import androidx.appcompat.app.AppCompatActivity;
+import androidx.lifecycle.ViewModelProvider;
 
 import com.liar.testwallet.R;
 
-import org.web3j.crypto.CipherException;
-import org.web3j.crypto.Credentials;
-import org.web3j.crypto.ECKeyPair;
-import org.web3j.crypto.RawTransaction;
-import org.web3j.crypto.TransactionEncoder;
-import org.web3j.crypto.Wallet;
-import org.web3j.crypto.WalletFile;
-import org.web3j.protocol.Web3j;
-import org.web3j.protocol.core.DefaultBlockParameterName;
-import org.web3j.protocol.http.HttpService;
-import org.web3j.utils.Convert;
-import org.web3j.utils.Numeric;
-
-import java.io.IOException;
-import java.math.BigDecimal;
-import java.math.BigInteger;
-import java.math.RoundingMode;
-
-/**
- * 以太坊钱包主页
- */
 public class EthWalletActivity extends AppCompatActivity {
 
-    private static final String TAG = "EthWalletActivity";
-    //以太坊钱包文件
-    private WalletFile mWalletFile;
-    //当前网络名称
-    private TextView mNetworkTitleText;
-    //当前钱包地址
     private EditText mWalletAddressText;
-    //当前钱包余额
     private TextView mWalletBalanceText;
-    //目标钱包地址
     private EditText mToAddressEdit;
-    //目标钱包余额
     private TextView mToAddressBalanceText;
-    //发送数额
     private EditText mAmountEdit;
+    private TextView mNetworkTitleText;
+    private Button mSendButton;
+    private ProgressBar mProgressBar;
     //钱包信息
     private EditText mKeyStoreEdit;
     //钱包私钥
     private EditText mPrivateKeyEdit;
-
-    //创建Web3j实例
-    private Web3j mWeb3j = Web3j.build(new HttpService(Constants.ETHEREUM_SEPOLIA_URL));
-    //当前钱包地址
-    private String mAddress;
+    private EthWalletViewModel viewModel;
 
     @Override
     protected void onCreate(@Nullable Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_ethereum_wallet);
+
         initUi();
-        initEthWalletData();
+
+        // Use AndroidViewModelFactory to pass Application context to ViewModel
+        ViewModelProvider.AndroidViewModelFactory factory = ViewModelProvider.AndroidViewModelFactory.getInstance(getApplication());
+        viewModel = new ViewModelProvider(this, (ViewModelProvider.Factory) factory).get(EthWalletViewModel.class);
+
+        setupObservers();
+        setupClickListeners();
+
+        // Trigger the initial data load
+        viewModel.loadWallet();
     }
 
-    /**
-     * 加载UI控件
-     */
-    private void initUi(){
+    private void initUi() {
         mWalletAddressText = findViewById(R.id.address);
         mWalletBalanceText = findViewById(R.id.balance);
         mToAddressEdit = findViewById(R.id.to_address);
         mAmountEdit = findViewById(R.id.amount);
-        mKeyStoreEdit = findViewById(R.id.key_store);
-        mPrivateKeyEdit = findViewById(R.id.private_key);
         mNetworkTitleText = findViewById(R.id.network_title);
         mToAddressBalanceText = findViewById(R.id.to_address_balance);
+        mSendButton = findViewById(R.id.btn_send);
+        mProgressBar = findViewById(R.id.progress_bar);
+        mKeyStoreEdit = findViewById(R.id.key_store);
+        mPrivateKeyEdit = findViewById(R.id.private_key);
+        mToAddressEdit.setText(Constants.LIA_ADDRESS);
     }
 
-    /**
-     * 加载钱包数据
-     */
-    private void initEthWalletData(){
-        EthWalletController.getInstance().loadWallet(this, new EthWalletController.OnWalletLoadedListener() {
-            @Override
-            public void onWalletLoaded(WalletFile w) {
-                mWalletFile = w;
-                Log.d(TAG, "onWalletLoaded::::: " + mWalletFile.getAddress().length());
-                mAddress = Constants.HEX_PREFIX + mWalletFile.getAddress();
-                Log.d(TAG, "mAddress当前钱包地址 ::::: " +mAddress);
-                runOnUiThread(new Runnable() {
-                    @Override
-                    public void run() {
+    private void setupObservers() {
+        viewModel.walletAddress.observe(this, address -> mWalletAddressText.setText(address));
+        viewModel.walletBalance.observe(this, balance -> mWalletBalanceText.setText(balance));
+        viewModel.toAddressBalance.observe(this, balance -> mToAddressBalanceText.setText(balance));
+        viewModel.walletInfo.observe(this, info -> mKeyStoreEdit.setText(info));
+        viewModel.walletKeyInfo.observe(this, info -> mPrivateKeyEdit.setText(info));
 
-                        mWalletAddressText.setText(mAddress);
-                        updateBalance(mAddress, mWalletBalanceText);
+        viewModel.isLoading.observe(this, isLoading -> {
+            mProgressBar.setVisibility(isLoading ? View.VISIBLE : View.GONE);
+            mSendButton.setEnabled(!isLoading);
+        });
 
-                        mToAddressEdit.setText(Constants.LIA_ADDRESS);
-                        updateBalance(mToAddressEdit.getText().toString(),mToAddressBalanceText);
-                    }
-                });
+        viewModel.transactionResult.observe(this, event -> {
+            String message = event.getContentIfNotHandled();
+            if (message != null) {
+                Toast.makeText(this, message, Toast.LENGTH_LONG).show();
             }
         });
     }
 
+    private void setupClickListeners() {
+        mSendButton.setOnClickListener(v -> {
+            String to = mToAddressEdit.getText().toString();
+            String amount = mAmountEdit.getText().toString();
+            viewModel.sendEth(to, amount);
+        });
+
+        findViewById(R.id.btn_refresh_balance).setOnClickListener(v -> viewModel.updateWalletBalance());
+        findViewById(R.id.btn_refresh_to_balance).setOnClickListener(v -> viewModel.updateToAddressBalance(mToAddressEdit.getText().toString()));
+        findViewById(R.id.showKeyStore).setOnClickListener(v -> viewModel.showWalletInfo());
+        findViewById(R.id.showPrivateKey).setOnClickListener(v -> viewModel.showKeyInfo());
+    }
 
     @Override
     public boolean onCreateOptionsMenu(Menu menu) {
-        //切换网络
         getMenuInflater().inflate(R.menu.eth_menu, menu);
-        return super.onCreateOptionsMenu(menu);
+        return true;
     }
 
     @Override
     public boolean onOptionsItemSelected(MenuItem item) {
-        switch (item.getItemId()) {
-            case R.id.switch_mainnet:
-                //切换Mainnet测试网络
-                refurbishUI("Mainnet测试网络",Constants.ETHEREUM_MAINNET_URL);
-                break;
-            case R.id.switch_sepolia:
-                //切换sepolia测试网络
-                refurbishUI("Sepolia测试网络",Constants.ETHEREUM_SEPOLIA_URL);
-                break;
+        if (item.getItemId() == R.id.switch_mainnet) {
+            mNetworkTitleText.setText("Mainnet");
+            viewModel.switchNetwork(Constants.ETHEREUM_MAINNET_URL);
+            return true;
+        } else if (item.getItemId() == R.id.switch_sepolia) {
+            mNetworkTitleText.setText("Sepolia Testnet");
+            viewModel.switchNetwork(Constants.ETHEREUM_SEPOLIA_URL);
+            return true;
         }
         return super.onOptionsItemSelected(item);
     }
-
-    /**
-     * 刷新UI
-     *  @param title 标题
-     *  @param ethUrl 切换的网络链接
-     */
-    private void refurbishUI(String title,String ethUrl){
-        mNetworkTitleText.setText(title);
-        mWeb3j = Web3j.build(new HttpService(ethUrl));
-
-        if (TextUtils.isEmpty(mToAddressEdit.getText())) {
-            mToAddressEdit.setText("");
-            mToAddressBalanceText.setText("");
-        }else {
-            updateBalance(mToAddressEdit.getText().toString(),mToAddressBalanceText);
-        }
-        if (TextUtils.isEmpty(mAddress) || TextUtils.isEmpty(mWalletAddressText.getText())) {
-            mWalletAddressText.setText("");
-            mWalletBalanceText.setText("");
-            return;
-        }else {
-            updateBalance(mAddress, mWalletBalanceText);
-        }
-    }
-
-    /**
-     * 更新钱包余额
-     *  @param owner 查询的钱包地址
-     *  @param view  查询的钱包余额TextView
-     */
-    private void updateBalance(String owner,TextView view) {
-
-        AsyncTask.execute(new Runnable() {
-            @Override
-            public void run() {
-                try {
-                    Log.d(TAG, "updateBalance-当前查询地址：：：" + owner);
-                    final BigInteger balance = mWeb3j.ethGetBalance(owner, DefaultBlockParameterName.LATEST).send().getBalance();
-                    runOnUiThread(new Runnable() {
-                        @Override
-                        public void run() {
-                            BigDecimal bigDecimal = Convert.fromWei(balance.toString(), Convert.Unit.ETHER);
-                            String balanceString = bigDecimal.setScale(8, RoundingMode.FLOOR).toPlainString() + " eth";
-                            Log.d(TAG, "updateBalance-当前查询地址的余额：：：" + balanceString);
-                            view.setText(balanceString);
-                        }
-                    });
-                } catch (IOException e) {
-                    e.printStackTrace();
-                    Log.d(TAG, "updateBalance-查询该地址的余额失败,IOException::::"+e.getMessage().toString());
-                } catch (Exception e) {
-                    e.printStackTrace();
-                    Log.d(TAG, "updateBalance-查询该地址的余额失败,Exception::::"+e.getMessage().toString());
-                }
-            }
-        });
-    }
-
-
-    /**
-     * 展示钱包信息
-     */
-    public void showKeyStore(View view) {
-        if (mWalletFile == null) {
-            return;
-        }
-        if(TextUtils.isEmpty(mKeyStoreEdit.getText().toString().trim())){
-            mKeyStoreEdit.setText(EthWalletController.getInstance().exportKeyStore(mWalletFile));
-        }else {
-            mKeyStoreEdit.setText("");
-        }
-
-    }
-
-
-    /**
-     * 展示钱包私钥
-     */
-    public void showPrivateKey(View view) {
-        if (mWalletFile == null) {
-            return;
-        }
-        if(TextUtils.isEmpty(mPrivateKeyEdit.getText().toString().trim())){
-            mPrivateKeyEdit.setText(EthWalletController.getInstance().exportPrivateKey(mWalletFile));
-        }else {
-            mPrivateKeyEdit.setText("");
-        }
-    }
-
-    /**
-     * 更新当前钱包余额
-     */
-    public void updateAddressBalance(View view) {
-        if (TextUtils.isEmpty(mAddress)
-                || TextUtils.isEmpty(mWalletAddressText.getText())) {
-            Toast.makeText(this,"当前钱包为空！",Toast.LENGTH_SHORT).show();
-            return;
-        }
-        updateBalance(mAddress, mWalletBalanceText);
-    }
-
-    /**
-     * 更新目标钱包余额
-     */
-    public void updateToAddressBalance(View view) {
-        if (TextUtils.isEmpty(mToAddressEdit.getText())) {
-            Toast.makeText(this,"目标钱包地址不能为空！",Toast.LENGTH_SHORT).show();
-            return;
-        }
-        updateBalance(mToAddressEdit.getText().toString(),mToAddressBalanceText);
-    }
-
-
-    /**
-     * 发送ETH
-     */
-    public void onSendEth(View view) {
-        AsyncTask.execute(new Runnable() {
-            @Override
-            public void run() {
-                if (mAddress == null || TextUtils.isEmpty(mToAddressEdit.getText().toString())
-                        || TextUtils.isEmpty(mAmountEdit.getText().toString())) return;
-                try {
-                    BigInteger transactionCount = mWeb3j.ethGetTransactionCount(mAddress, DefaultBlockParameterName.LATEST).send().getTransactionCount();
-                    BigInteger gasPrice = mWeb3j.ethGasPrice().send().getGasPrice();
-                    Log.d(TAG, "run: onSendEth:::: " + transactionCount + ", " + gasPrice);
-                    BigInteger gasLimit = new BigInteger("200000");
-                    BigDecimal value = Convert.toWei(mAmountEdit.getText().toString().trim(), Convert.Unit.ETHER);
-                    Log.d(TAG, "run: onSendEth:::: value wei" + value.toPlainString());
-                    String to = mToAddressEdit.getText().toString().trim();
-                    RawTransaction etherTransaction = RawTransaction.createEtherTransaction(transactionCount, gasPrice, gasLimit, to, value.toBigInteger());
-                    //获取私钥，进行签名
-                    ECKeyPair ecKeyPair = Wallet.decrypt(Constants.PASSWORD, mWalletFile);
-                    Credentials credentials = Credentials.create(ecKeyPair);
-
-                    byte[] bytes = TransactionEncoder.signMessage(etherTransaction, credentials);
-                    String hexValue = Numeric.toHexString(bytes);
-                    final String transactionHash = mWeb3j.ethSendRawTransaction(hexValue).send().getTransactionHash();
-                    Log.d(TAG, "run: onSendEth:::: transactionHash :::" + transactionHash);
-                    runOnUiThread(new Runnable() {
-                        @Override
-                        public void run() {
-                            Toast.makeText(EthWalletActivity.this, "Send success!", Toast.LENGTH_SHORT).show();
-                        }
-                    });
-                } catch (IOException e) {
-                    e.printStackTrace();
-                    Log.d(TAG, "run: onSendEth.IOException：：： " + e.getMessage());
-                } catch (CipherException e) {
-                    e.printStackTrace();
-                    Log.d(TAG, "run: onSendEth.CipherException：：： " + e.getMessage());
-                }
-            }
-        });
-    }
-
 }
